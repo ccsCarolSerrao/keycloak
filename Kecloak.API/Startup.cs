@@ -11,6 +11,9 @@ using System.Security.Cryptography.X509Certificates;
 using System;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Authorization;
+using System.Security.Claims;
+using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
 
 namespace Kecloak.API
 {
@@ -32,6 +35,7 @@ namespace Kecloak.API
             IdentityModelEventSource.ShowPII = true;
             services.AddControllers();
             ConfigureAuthentication(services);
+            ConfigureAuthorization(services);
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -56,23 +60,6 @@ namespace Kecloak.API
 
         private void ConfigureAuthentication(IServiceCollection services)
         {
-            services.AddAuthorization(auth =>
-            {   
-                auth.AddPolicy("ADM", new AuthorizationPolicyBuilder()
-                    .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme‌​)
-                    .RequireAuthenticatedUser()
-                    .Build());
-            });
-
-            services.AddMvc(setupOptions =>
-            {
-                var authorizationPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
-                    .RequireAuthenticatedUser()
-                    .Build();
-                setupOptions.Filters.Add(new AuthorizeFilter(authorizationPolicy));
-            });
-
-
             services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -80,7 +67,7 @@ namespace Kecloak.API
             }).AddJwtBearer(bearerOptions =>
             {
                 bearerOptions.Authority = Configuration["Jwt:Authority"];
-                //   bearerOptions.Audience = Configuration["Jwt:Audience"];
+                bearerOptions.Audience = Configuration["Jwt:Audience"];
                 bearerOptions.SaveToken = true;
                 bearerOptions.IncludeErrorDetails = true;
                 if (Environment.IsDevelopment())
@@ -126,9 +113,37 @@ namespace Kecloak.API
                         }
 
                         return context.Response.WriteAsync(errorMessage);
+                    },
+
+                    OnTokenValidated = context =>
+                    {
+                        var resourceAccess = JObject.Parse(context.Principal.FindFirstValue("resource_access"));
+                        var clientRoles = resourceAccess[Configuration["Jwt:Audience"]]["roles"];
+                        var claimsIdentity = context.Principal.Identity as ClaimsIdentity;
+                        if (claimsIdentity != null)
+                        {
+                            foreach (var clientRole in clientRoles)
+                            {
+                                claimsIdentity.AddClaim(new Claim(ClaimTypes.Role, clientRole.ToString()));
+                            }
+                        }
+                        return Task.CompletedTask;
                     }
                 };
+
             });
+
+        }
+
+        private void ConfigureAuthorization(IServiceCollection services)
+        {
+            services.AddAuthorization(auth =>
+           {
+               auth.DefaultPolicy = new AuthorizationPolicyBuilder()
+                   .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme‌​)
+                   .RequireAuthenticatedUser()
+                   .Build();
+           });
         }
     }
 }

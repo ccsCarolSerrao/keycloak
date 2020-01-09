@@ -25,7 +25,7 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "Jwt__Authority" : "https://login.sandbox.stone.com.br/auth/realms/stone-credit",
-        "Jwt__Audience": "account"
+        "Jwt__Audience": "credit-api"
       }
     }
   }
